@@ -50,7 +50,18 @@ function computeDynamicHighlights() {
     dynamicHighlightSet.clear();
     if (!reportResults) return;
     const positions = reportResults.positions;
+    // Define weights for each classification tier
+    const weights: {[key: string]: number} = {
+        best: 0.5,
+        excellent: 0.6,
+        good: 0.7,
+        inaccuracy: 0.4,
+        mistake: 0.3
+    };
+    // Initialize lists for weighted classifications
     const bestList: {idx:number; magnitude:number;}[] = [];
+    const excellentList: {idx:number; magnitude:number;}[] = [];
+    const goodList: {idx:number; magnitude:number;}[] = [];
     const inaccuracyList: {idx:number; magnitude:number;}[] = [];
     const mistakeList: {idx:number; magnitude:number;}[] = [];
     for (let i = 1; i < positions.length; i++) {
@@ -59,20 +70,41 @@ function computeDynamicHighlights() {
         const currEval = pos.topLines?.find(line => line.id == 1)?.evaluation?.value ?? 0;
         const magnitude = Math.abs(currEval - prevEval);
         switch (pos.classification) {
-            case "best": bestList.push({idx:i, magnitude}); break;
-            case "inaccuracy": inaccuracyList.push({idx:i, magnitude}); break;
+            case "best": bestList.push({idx: i, magnitude}); break;
+            case "excellent": excellentList.push({idx: i, magnitude}); break;
+            case "good": goodList.push({idx: i, magnitude}); break;
+            case "inaccuracy": inaccuracyList.push({idx: i, magnitude}); break;
             case "mistake":
-            case "blunder": mistakeList.push({idx:i, magnitude}); break;
+            case "blunder": mistakeList.push({idx: i, magnitude}); break;
             case "great":
             case "brilliant": dynamicHighlightSet.add(i); break;
         }
     }
-    bestList.sort((a,b) => b.magnitude - a.magnitude);
-    inaccuracyList.sort((a,b) => b.magnitude - a.magnitude);
-    mistakeList.sort((a,b) => b.magnitude - a.magnitude);
-    for (let j = 0; j < selectCount(bestList.length); j++) dynamicHighlightSet.add(bestList[j].idx);
-    for (let j = 0; j < selectCount(inaccuracyList.length); j++) dynamicHighlightSet.add(inaccuracyList[j].idx);
-    for (let j = 0; j < selectCount(mistakeList.length); j++) dynamicHighlightSet.add(mistakeList[j].idx);
+    // Sort each list by descending magnitude
+    bestList.sort((a, b) => b.magnitude - a.magnitude);
+    excellentList.sort((a, b) => b.magnitude - a.magnitude);
+    goodList.sort((a, b) => b.magnitude - a.magnitude);
+    inaccuracyList.sort((a, b) => b.magnitude - a.magnitude);
+    mistakeList.sort((a, b) => b.magnitude - a.magnitude);
+    // Helper to compute weighted selection count
+    const selectWeighted = (list: {idx:number; magnitude:number;}[], weight: number) =>
+        Math.max(1, Math.floor(list.length * weight));
+    // Add top weighted items to dynamic highlights
+    for (let j = 0; j < selectWeighted(bestList, weights.best); j++) {
+        dynamicHighlightSet.add(bestList[j].idx);
+    }
+    for (let j = 0; j < selectWeighted(excellentList, weights.excellent); j++) {
+        dynamicHighlightSet.add(excellentList[j].idx);
+    }
+    for (let j = 0; j < selectWeighted(goodList, weights.good); j++) {
+        dynamicHighlightSet.add(goodList[j].idx);
+    }
+    for (let j = 0; j < selectWeighted(inaccuracyList, weights.inaccuracy); j++) {
+        dynamicHighlightSet.add(inaccuracyList[j].idx);
+    }
+    for (let j = 0; j < selectWeighted(mistakeList, weights.mistake); j++) {
+        dynamicHighlightSet.add(mistakeList[j].idx);
+    }
     // Always include the final move of the game
     dynamicHighlightSet.add(positions.length - 1);
 }
