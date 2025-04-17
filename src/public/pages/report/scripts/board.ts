@@ -35,6 +35,63 @@ let blackPlayer: Profile = {
     rating: "?"
 };
 
+// Add fast-forward highlights feature
+let fastForwarding = false;
+let fastForwardInterval: number | null = null;
+
+// Inject CSS for highlights button
+;(function() {
+    const style = document.createElement("style");
+    style.innerHTML = `
+    #highlights-button {
+        transition: transform 0.5s ease-in-out;
+        cursor: pointer;
+    }
+    #highlights-button:hover {
+        transform: rotate(360deg);
+    }
+    `;
+    document.head.appendChild(style);
+})();
+
+// Create highlights button in toolbar
+;(function() {
+    const btn = $("<i>")
+        .attr("id", "highlights-button")
+        .addClass("fa-solid fa-star")
+        .css("color", "#ffffff")
+        .attr("data-tooltip", "Highlights");
+    $("#back-move-button").after(btn);
+    btn.on("click", () => {
+        if (fastForwarding) {
+            fastForwarding = false;
+            if (fastForwardInterval) {
+                clearInterval(fastForwardInterval);
+                fastForwardInterval = null;
+            }
+            return;
+        }
+        fastForwarding = true;
+        const highlightClasses = ["brilliant", "great", "best", "blunder", "mistake"];
+        fastForwardInterval = window.setInterval(() => {
+            if (!reportResults) return;
+            traverseMoves(1);
+            const cls = reportResults.positions[currentMoveIndex].classification;
+            if (cls && highlightClasses.includes(cls)) {
+                // stop fast-forwarding on highlight
+                fastForwarding = false;
+                if (fastForwardInterval) {
+                    clearInterval(fastForwardInterval);
+                    fastForwardInterval = null;
+                }
+                // show classification dialog and popover at highlight
+                updateClassificationMessage(reportResults.positions[currentMoveIndex - 1], reportResults.positions[currentMoveIndex]);
+                renderFloatingChatIcons();
+            }
+        }, 300);
+    });
+})();
+
 function getBoardCoordinates(square: string): Coordinate {
     if (boardFlipped) {
         return {
@@ -221,6 +278,12 @@ async function drawBoard(fen: string) {
 }
 
 function renderFloatingChatIcons() {
+    // Suppress popovers during fast-forward
+    if (fastForwarding) {
+        const popover = document.getElementById("chat-popover");
+        if (popover) popover.style.display = "none";
+        return;
+    }
     // Automatically display analysis popover anchored to classification icon
     const popover = document.getElementById("chat-popover");
     const board = document.getElementById("board");
@@ -324,7 +387,12 @@ function traverseMoves(moveCount: number) {
     drawEvaluationBar(topLine?.evaluation ?? { type: "cp", value: 0 }, boardFlipped, movedPlayer);
     drawEvaluationGraph();
 
-    updateClassificationMessage(positions[currentMoveIndex - 1], currentPosition);
+    if (!fastForwarding) {
+        updateClassificationMessage(positions[currentMoveIndex - 1], currentPosition);
+    } else {
+        $("#classification-message-container").css("display", "none");
+        $("#top-alternative-message").css("display", "none");
+    }
     updateEngineSuggestions(currentPosition.topLines ?? []);
     if (currentPosition.opening) {
         $("#opening-name").html(currentPosition.opening);
