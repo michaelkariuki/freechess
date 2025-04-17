@@ -18,7 +18,8 @@
 }
 
 #kofi-a,
-#discord-a {
+#discord-a,
+#games-a {
     cursor: pointer;
     display: flex;
     justify-content: center;

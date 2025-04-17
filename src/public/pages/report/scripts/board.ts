@@ -39,6 +39,44 @@ let blackPlayer: Profile = {
 let fastForwarding = false;
 let fastForwardInterval: number | null = null;
 
+// Add dynamic highlight index set and helpers
+let dynamicHighlightSet: Set<number> = new Set();
+
+function selectCount(len: number): number {
+    return Math.max(1, Math.floor(len * 0.5));
+}
+
+function computeDynamicHighlights() {
+    dynamicHighlightSet.clear();
+    if (!reportResults) return;
+    const positions = reportResults.positions;
+    const bestList: {idx:number; magnitude:number;}[] = [];
+    const inaccuracyList: {idx:number; magnitude:number;}[] = [];
+    const mistakeList: {idx:number; magnitude:number;}[] = [];
+    for (let i = 1; i < positions.length; i++) {
+        const pos = positions[i];
+        const prevEval = positions[i - 1].topLines?.find(line => line.id == 1)?.evaluation?.value ?? 0;
+        const currEval = pos.topLines?.find(line => line.id == 1)?.evaluation?.value ?? 0;
+        const magnitude = Math.abs(currEval - prevEval);
+        switch (pos.classification) {
+            case "best": bestList.push({idx:i, magnitude}); break;
+            case "inaccuracy": inaccuracyList.push({idx:i, magnitude}); break;
+            case "mistake":
+            case "blunder": mistakeList.push({idx:i, magnitude}); break;
+            case "great":
+            case "brilliant": dynamicHighlightSet.add(i); break;
+        }
+    }
+    bestList.sort((a,b) => b.magnitude - a.magnitude);
+    inaccuracyList.sort((a,b) => b.magnitude - a.magnitude);
+    mistakeList.sort((a,b) => b.magnitude - a.magnitude);
+    for (let j = 0; j < selectCount(bestList.length); j++) dynamicHighlightSet.add(bestList[j].idx);
+    for (let j = 0; j < selectCount(inaccuracyList.length); j++) dynamicHighlightSet.add(inaccuracyList[j].idx);
+    for (let j = 0; j < selectCount(mistakeList.length); j++) dynamicHighlightSet.add(mistakeList[j].idx);
+    // Always include the final move of the game
+    dynamicHighlightSet.add(positions.length - 1);
+}
+
 // Inject CSS for highlights button
 ;(function() {
     const style = document.createElement("style");
@@ -72,19 +110,21 @@ let fastForwardInterval: number | null = null;
             return;
         }
         fastForwarding = true;
-        const highlightClasses = ["brilliant", "great", "best", "blunder", "mistake"];
-        fastForwardInterval = window.setInterval(() => {
+        // prepare dynamic highlights based on engine evaluation differences
+        computeDynamicHighlights();
+        fastForwardInterval = window.setInterval(async () => {
             if (!reportResults) return;
-            traverseMoves(1);
-            const cls = reportResults.positions[currentMoveIndex].classification;
-            if (cls && highlightClasses.includes(cls)) {
+            // wait for animation and board update
+            await traverseMoves(1);
+            // only highlight moves in our dynamic set
+            if (dynamicHighlightSet.has(currentMoveIndex)) {
                 // stop fast-forwarding on highlight
                 fastForwarding = false;
                 if (fastForwardInterval) {
                     clearInterval(fastForwardInterval);
                     fastForwardInterval = null;
                 }
-                // show classification dialog and popover at highlight
+                // show classification dialog and popover at highlight after animation
                 updateClassificationMessage(reportResults.positions[currentMoveIndex - 1], reportResults.positions[currentMoveIndex]);
                 renderFloatingChatIcons();
             }
@@ -362,70 +402,156 @@ function updateBoardPlayers() {
     $("#bottom-player-profile").html(`${bottomPlayerProfile.username} (${bottomPlayerProfile.rating})`);
 }
 
-function traverseMoves(moveCount: number) {
+// Add helper to parse FEN into a 2D board array
+function parseFenToBoard(fen: string): (string|null)[][] {
+    const rows = fen.split(' ')[0].split('/');
+    const board: (string|null)[][] = [];
+    for (let r = 0; r < 8; r++) {
+        const row: (string|null)[] = [];
+        const fenRow = rows[r];
+        for (let char of fenRow) {
+            if (/\d/.test(char)) {
+                const emptyCount = parseInt(char, 10);
+                for (let i = 0; i < emptyCount; i++) row.push(null);
+            } else {
+                row.push(char);
+            }
+        }
+        board.push(row);
+    }
+    return board;
+}
+
+// Add function to draw static board (squares, coordinates, and pieces, optionally skipping one square)
+function drawStaticBoard(fen: string, excludeSquare?: string) {
+    const colours = ["#f6dfc0", "#b88767"];
+    // Draw squares
+    for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+            ctx.fillStyle = colours[(x + y) % 2];
+            ctx.fillRect(x * (BOARD_SIZE / 8), y * (BOARD_SIZE / 8), BOARD_SIZE / 8, BOARD_SIZE / 8);
+        }
+    }
+    // Draw coordinates
+    ctx.font = "24px Arial";
+    const files = "abcdefgh".split("");
+    for (let x = 0; x < 8; x++) {
+        ctx.fillStyle = colours[x % 2];
+        ctx.fillText(boardFlipped ? files[7 - x] : files[x], x * (BOARD_SIZE / 8) + 5, BOARD_SIZE - 5);
+    }
+    for (let y = 0; y < 8; y++) {
+        ctx.fillStyle = colours[(y + 1) % 2];
+        ctx.fillText(boardFlipped ? (y + 1).toString() : (8 - y).toString(), 5, y * (BOARD_SIZE / 8) + 24);
+    }
+    // Draw pieces
+    const boardArray = parseFenToBoard(fen);
+    for (let rank = 0; rank < 8; rank++) {
+        for (let file = 0; file < 8; file++) {
+            const piece = boardArray[rank][file];
+            if (!piece) continue;
+            const square = `${"abcdefgh"[file]}${8 - rank}`;
+            if (excludeSquare === square) continue;
+            const coord = getBoardCoordinates(square);
+            ctx.drawImage(pieceImages[piece], coord.x * (BOARD_SIZE / 8), coord.y * (BOARD_SIZE / 8), BOARD_SIZE / 8, BOARD_SIZE / 8);
+        }
+    }
+}
+
+// Add function to animate a single piece moving between squares
+async function animatePieceMove(prevFen: string, newFen: string, moveUci: string) {
+    const [fromSq, toSq] = [moveUci.slice(0,2), moveUci.slice(2,4)];
+    const boardArray = parseFenToBoard(prevFen);
+    const fileIdx = fromSq.charCodeAt(0) - 'a'.charCodeAt(0);
+    const rankIdx = 8 - parseInt(fromSq[1], 10);
+    const piece = boardArray[rankIdx][fileIdx];
+    if (!piece) {
+        drawBoard(newFen);
+        return;
+    }
+    const fromCoord = getBoardCoordinates(fromSq);
+    const toCoord = getBoardCoordinates(toSq);
+    const fromPx = { x: fromCoord.x * (BOARD_SIZE / 8), y: fromCoord.y * (BOARD_SIZE / 8) };
+    const toPx = { x: toCoord.x * (BOARD_SIZE / 8), y: toCoord.y * (BOARD_SIZE / 8) };
+    const duration = 300;
+    const frameCount = 10;
+    const frameTime = duration / frameCount;
+    for (let frame = 0; frame <= frameCount; frame++) {
+        const t = frame / frameCount;
+        const currentX = fromPx.x + (toPx.x - fromPx.x) * t;
+        const currentY = fromPx.y + (toPx.y - fromPx.y) * t;
+        drawStaticBoard(prevFen, fromSq);
+        ctx.drawImage(pieceImages[piece], currentX, currentY, BOARD_SIZE / 8, BOARD_SIZE / 8);
+        await new Promise(r => setTimeout(r, frameTime));
+    }
+    drawBoard(newFen);
+}
+
+// Replace traverseMoves with async version to include animation
+async function traverseMoves(moveCount: number) {
     if (ongoingEvaluation || !reportResults) return;
-
-    let positions = reportResults.positions;
-
-    // Clamp move index to number of moves in game
-    let previousMoveIndex = currentMoveIndex;
+    const positions = reportResults.positions;
+    const prevIndex = currentMoveIndex;
     currentMoveIndex = Math.max(
-        Math.min(currentMoveIndex + moveCount, reportResults.positions.length - 1),
-        0,
+        Math.min(currentMoveIndex + moveCount, positions.length - 1),
+        0
     );
-
-    let currentPosition = positions[currentMoveIndex];
-
-    // Draw board, evaluation bar, update report card
-    drawBoard(currentPosition?.fen ?? startingPositionFen);
-
-    let topLine = currentPosition?.topLines?.find(line => line.id == 1);
-    lastEvaluation = topLine?.evaluation ?? { type: "cp", value: 0 }
-
+    const prevPos = positions[prevIndex];
+    const currPos = positions[currentMoveIndex];
+    const currFen = currPos?.fen ?? startingPositionFen;
+    const prevFen = prevPos?.fen ?? startingPositionFen;
+    if (prevIndex !== currentMoveIndex && currPos.move?.uci) {
+        await animatePieceMove(prevFen, currFen, currPos.move.uci);
+    } else {
+        drawBoard(currFen);
+    }
+    const topLine = currPos?.topLines?.find(line => line.id == 1);
+    lastEvaluation = topLine?.evaluation ?? { type: "cp", value: 0 };
     const movedPlayer = getMovedPlayer();
-
-    drawEvaluationBar(topLine?.evaluation ?? { type: "cp", value: 0 }, boardFlipped, movedPlayer);
+    drawEvaluationBar(lastEvaluation, boardFlipped, movedPlayer);
     drawEvaluationGraph();
-
     if (!fastForwarding) {
-        updateClassificationMessage(positions[currentMoveIndex - 1], currentPosition);
+        updateClassificationMessage(prevPos, currPos);
     } else {
         $("#classification-message-container").css("display", "none");
         $("#top-alternative-message").css("display", "none");
     }
-    updateEngineSuggestions(currentPosition.topLines ?? []);
-    if (currentPosition.opening) {
-        $("#opening-name").html(currentPosition.opening);
+    updateEngineSuggestions(currPos.topLines ?? []);
+    if (currPos.opening) {
+        $("#opening-name").html(currPos.opening);
     }
-
     // Do not play board audio if trying to traverse outside of game
     if (
-        (previousMoveIndex == 0 && moveCount < 0) 
-        || (previousMoveIndex == positions.length - 1 && moveCount > 0)
+        (prevIndex == 0 && moveCount < 0) 
+        || (prevIndex == positions.length - 1 && moveCount > 0)
     ) return;
-
     // Stop all playing board audio
-    for (let boardSound of $<HTMLAudioElement>(".sound-fx-board").get()) {
+    for (const el of $(".sound-fx-board").get()) {
+        const boardSound = el as HTMLAudioElement;
         boardSound.pause();
         boardSound.currentTime = 0;
     }
-
     // Play new audio based on move type
     let moveSAN = positions[currentMoveIndex + (moveCount == -1 ? 1 : 0)].move?.san ?? "";
-
     if (moveSAN.endsWith("#")) {
-        $<HTMLAudioElement>("#sound-fx-check").get(0)?.play();
-        $<HTMLAudioElement>("#sound-fx-game-end").get(0)?.play();
+        const checkAudio = $("#sound-fx-check").get(0) as HTMLAudioElement | undefined;
+        const endAudio = $("#sound-fx-game-end").get(0) as HTMLAudioElement | undefined;
+        checkAudio?.play();
+        endAudio?.play();
     } else if (moveSAN.endsWith("+")) {
-        $<HTMLAudioElement>("#sound-fx-check").get(0)?.play();
+        const checkAudio = $("#sound-fx-check").get(0) as HTMLAudioElement | undefined;
+        checkAudio?.play();
     } else if (/=[QRBN]/g.test(moveSAN)) {
-        $<HTMLAudioElement>("#sound-fx-promote").get(0)?.play();
+        const promoAudio = $("#sound-fx-promote").get(0) as HTMLAudioElement | undefined;
+        promoAudio?.play();
     } else if (moveSAN.includes("O-O")) {
-        $<HTMLAudioElement>("#sound-fx-castle").get(0)?.play();
+        const castleAudio = $("#sound-fx-castle").get(0) as HTMLAudioElement | undefined;
+        castleAudio?.play();
     } else if (moveSAN.includes("x")) {
-        $<HTMLAudioElement>("#sound-fx-capture").get(0)?.play();
+        const captureAudio = $("#sound-fx-capture").get(0) as HTMLAudioElement | undefined;
+        captureAudio?.play();
     } else {
-        $<HTMLAudioElement>("#sound-fx-move").get(0)?.play();
+        const moveAudio = $("#sound-fx-move").get(0) as HTMLAudioElement | undefined;
+        moveAudio?.play();
     }
 }
 
