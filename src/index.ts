@@ -24,6 +24,14 @@ app.get("/privacy", async (req, res) => {
     res.sendFile(path.resolve("src/public/pages/privacy/index.html"));
 });
 
+app.get("/games", async (req, res) => {
+    res.sendFile(path.resolve("src/public/pages/games/index.html"));
+});
+
+app.get("/pages/games/index.html", async (req, res) => {
+    res.sendFile(path.resolve("src/public/pages/games/index.html"));
+});
+
 app.listen(process.env.PORT, () => {
     console.log("Server running.");
 });

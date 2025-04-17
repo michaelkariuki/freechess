@@ -89,7 +89,7 @@ async function evaluate() {
 
     // Fetch cloud evaluations where possible
     for (let position of positions) {
-        function placeCutoff() {
+        function placeCutoff(position: typeof positions[0]) {
             let lastPosition = positions[positions.indexOf(position) - 1];
             if (!lastPosition) return;
 
@@ -119,7 +119,7 @@ async function evaluate() {
         }
 
         if (!cloudEvaluationResponse.ok) {
-            placeCutoff();
+            placeCutoff(position);
             break;
         }
 
@@ -151,7 +151,7 @@ async function evaluate() {
         });
 
         if (position.topLines?.length != 2) {
-            placeCutoff();
+            placeCutoff(position);
             break;
         }
 
@@ -370,3 +370,21 @@ $("#depth-slider").on("input", () => {
         $("#depth-counter").html(depth + `|<i class="fa-solid fa-hourglass-half" style="color: #ffffff;"></i>`);
     }
 });
+
+// Auto-load PGN from ?game=ID if present
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get("game");
+    if (gameId) {
+        fetch(`/api/game/${gameId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.pgn) {
+                    $("#pgn").val(data.pgn);
+                    $("#review-button").removeClass("review-button-disabled");
+                    // Optionally, auto-analyse:
+                    // $("#review-button").click();
+                }
+            });
+    }
+})();

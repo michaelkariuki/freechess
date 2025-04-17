@@ -61,3 +61,9 @@ If you've found a bug in the website, have some cool suggestions or just want to
 <a href="https://discord.com/invite/XxtsAzPyCb">
     <img height="36" src="https://chess.wintrcat.uk/static/media/discord.png">
 </a>
+
+## Data Directory
+
+PGN files and other user/game data should be stored in the `data/` directory at the project root. For example, place your PGN file as `data/chess_com_games_2025-04-17.pgn`.
+
+This follows standard Express/Node.js conventions for separating code and data.

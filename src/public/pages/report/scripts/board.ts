@@ -216,6 +216,70 @@ async function drawBoard(fen: string) {
             ctx.globalAlpha = 1;
         }
     }
+
+    renderFloatingChatIcons();
+}
+
+function renderFloatingChatIcons() {
+    // Automatically display analysis popover anchored to classification icon
+    const popover = document.getElementById("chat-popover");
+    const board = document.getElementById("board");
+    if (!popover || !board || !reportResults || currentMoveIndex === 0) return;
+    // Clear any overlay icons
+    const overlay = document.getElementById("board-overlay");
+    if (overlay) {
+        overlay.innerHTML = "";
+        overlay.style.pointerEvents = "none";
+    }
+    const pos = reportResults.positions[currentMoveIndex];
+    if (!pos.move) return;
+    const move = pos.move!;
+    const classification = pos.classification;
+    if (!classification) return;
+    // Compute destination square coordinates
+    const to = move.uci.slice(2, 4);
+    const coord = getBoardCoordinates(to);
+    // Get board size and square dimensions
+    const boardRect = board.getBoundingClientRect();
+    const squareSizeX = boardRect.width / 8;
+    const squareSizeY = boardRect.height / 8;
+    // Calculate classification icon offsets and size
+    const classOffsetX = (68 / 90) * squareSizeX;
+    const classOffsetY = (-10 / 90) * squareSizeY;
+    const classIconScale = 56 / (BOARD_SIZE / 8);
+    const classIconWidth = classIconScale * squareSizeX;
+    const classIconHeight = classIconScale * squareSizeY;
+    // Determine anchor position in viewport space
+    const anchorX = boardRect.left + coord.x * squareSizeX + classOffsetX + classIconWidth;
+    const anchorY = boardRect.top + coord.y * squareSizeY + classOffsetY;
+    // Compute analysis text directly to stay in sync
+    const classificationMessages: { [key: string]: string } = {
+        "great": "a great move",
+        "good": "an okay move",
+        "inaccuracy": "an inaccuracy",
+        "mistake": "a mistake",
+        "blunder": "a blunder",
+        "book": "theory"
+    };
+    const messageDesc = classificationMessages[classification] ?? classification;
+    popover.innerHTML = `${move.san} is ${messageDesc}`;
+    // Style the popover for visibility
+    popover.style.backgroundColor = "#fff";
+    popover.style.color = "#000";
+    popover.style.border = "1px solid #ccc";
+    popover.style.borderRadius = "8px";
+    popover.style.padding = "8px";
+    popover.style.boxShadow = "0 2px 12px rgba(0,0,0,0.18)";
+    popover.style.zIndex = "200";
+    // Position popover right next to classification icon and center vertically
+    const margin = 2; // minimal gap
+    popover.style.position = "fixed";
+    popover.style.display = "block";
+    // After display, measure popover height to center
+    const popHeight = popover.offsetHeight;
+    const topPosition = anchorY + classIconHeight / 2 - popHeight / 2;
+    popover.style.left = `${anchorX + margin}px`;
+    popover.style.top = `${topPosition}px`;
 }
 
 function updateBoardPlayers() {

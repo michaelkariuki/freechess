@@ -21,7 +21,7 @@
 
 #board-inner-container {
     display: grid;
-
+    position: relative;
 }
 
 #evaluation-bar {
@@ -41,4 +41,44 @@
     grid-column: 1 / 2;
     width: 730px;
     height: 730px;
+}
+
+/* Floating chat icon overlay */
+#board-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 1280px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.floating-chat-icon {
+  position: absolute;
+  font-size: 36px;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  transition: transform 0.1s;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+}
+.floating-chat-icon:hover {
+  transform: scale(1.2);
+}
+
+#chat-popover {
+  position: absolute;
+  min-width: 220px;
+  max-width: 320px;
+  background: #fff;
+  color: #222;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  padding: 12px;
+  z-index: 100;
+  display: none;
+  font-size: 1rem;
+  pointer-events: auto;
 }

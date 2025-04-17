@@ -40,6 +40,7 @@ export function getAttackers(fen: string, square: Square): InfluencingPiece[] {
 
     let board = new Chess(fen);
     let piece = board.get(square);
+    if (!piece) return attackers;
 
     // Set colour to move to opposite of attacked piece
     board.load(fen
@@ -113,6 +114,7 @@ export function getDefenders(fen: string, square: Square) {
 
     let board = new Chess(fen);
     let piece = board.get(square);
+    if (!piece) return [];
     let testAttacker = getAttackers(fen, square)[0];
 
     // If there is an attacker we can test capture the piece with
@@ -164,6 +166,7 @@ export function isPieceHanging(lastFen: string, fen: string, square: Square) {
 
     let lastPiece = lastBoard.get(square);
     let piece = board.get(square);
+    if (!lastPiece || !piece) return false;
 
     let attackers = getAttackers(fen, square);
     let defenders = getDefenders(fen, square);

@@ -6,6 +6,7 @@ import pgnParser from "pgn-parser";
 import analyse from "./lib/analysis";
 import { Position } from "./lib/types/Position";
 import { ParseRequestBody, ReportRequestBody } from "./lib/types/RequestBody";
+import { getAllGamesMeta, getGameById } from "./lib/gameStore";
 
 const router = Router();
 
@@ -98,6 +99,19 @@ router.post("/report", async (req, res) => {
 
     res.json({ results });
 
+});
+
+// List all games (metadata only)
+router.get("/games", (req, res) => {
+    res.json({ games: getAllGamesMeta() });
+});
+
+// Get a single game's PGN by id
+router.get("/game/:id", (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const game = getGameById(id);
+    if (!game) return res.status(404).json({ message: "Game not found" });
+    res.json({ pgn: game.pgn });
 });
 
 export default router;
